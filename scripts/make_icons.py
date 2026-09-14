@@ -1,10 +1,21 @@
 """Generates the Evenwave icon set (recreation of the provided artwork:
 gradient blue->purple squircle, white equalizer bars, center balance knob).
-Run once with Pillow+numpy; output PNGs are what ships, this script is not
-part of the extension itself.
+
+Run with Pillow+numpy from anywhere:
+    python scripts/make_icons.py
+
+Writes the shipped sizes (16/32/48/128) into icons/, and keeps the 1024px
+master (icon512.png, used for store listing art, not referenced by the
+manifest) next to this script -- neither this script nor the master ships
+in the built zip, see scripts/build.py's SHIP_PATHS.
 """
+from pathlib import Path
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+ICONS_DIR = SCRIPT_DIR.parent / "icons"
 
 SIZE = 1024
 BRAND_A = (45, 100, 255)     # top-left blue
@@ -66,7 +77,8 @@ def build_icon():
 
 if __name__ == '__main__':
     master = build_icon()
-    master.save('icon512.png')
+    master.save(SCRIPT_DIR / 'icon512.png')
+    ICONS_DIR.mkdir(exist_ok=True)
     for s in (128, 48, 32, 16):
-        master.resize((s, s), Image.LANCZOS).save(f'icon{s}.png')
+        master.resize((s, s), Image.LANCZOS).save(ICONS_DIR / f'icon{s}.png')
     print('done')

@@ -5,8 +5,45 @@ Detects YouTube videos whose audio only plays on one side and routes the live ch
 ## Install
 
 1. `chrome://extensions` → turn on Developer mode.
-2. Load unpacked → pick this folder.
+2. Load unpacked → pick this folder (or, if you grabbed a release zip
+   instead of cloning, unzip it first and pick the unzipped folder).
 3. Open a YouTube video and click the extension icon.
+
+## Development
+
+No bundler, no npm dependencies for the extension itself — just plain
+JS/HTML/CSS. Only the build/icon tooling under `scripts/` uses Python.
+
+```bash
+python scripts/build.py
+```
+
+Packages the extension into `dist/evenwave/` (point Load unpacked here to
+test a real build instead of the raw source) and `dist/evenwave-<version>.zip`
+(store-upload-ready, `manifest.json` at the archive root).
+
+To change the icon or brand mark, edit `scripts/make_icons.py` (needs
+Pillow + numpy) and rerun it — it writes the shipped sizes into `icons/`
+and keeps the 1024px master next to itself.
+
+See [CLAUDE.md](CLAUDE.md) for the architecture (message flow, the audio
+graph, the multi-frame detection model) if you're changing `content.js`.
+
+## Releasing
+
+Pushing a tag matching `v*` (e.g. `v1.0.1`) runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml): it builds
+the zip via `scripts/build.py` and attaches it to a GitHub Release.
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+That does *not* publish to the Chrome Web Store — CI only produces the zip.
+Download it from the release and upload it to the
+[developer dashboard](https://chrome.google.com/webstore/devconsole)
+by hand.
 
 ## How it works
 
@@ -48,3 +85,13 @@ Manual modes (Mono / Use left / Use right) stay quiet since you're already steer
   0.5 if you hear clipping.
 - Extend to other sites by adding hosts to `matches` in `manifest.json` — the
   content script itself is site-agnostic, it just grabs the first `<video>`.
+
+## Project layout
+
+```
+manifest.json, content.js, popup.html, popup.js, icons/   the shipped extension
+scripts/build.py            packages the above into dist/
+scripts/make_icons.py       regenerates icons/ from the brand spec
+scripts/icon512.png         1024px icon master (store listing art, not shipped)
+.github/workflows/          release CI, runs on v* tags
+```
