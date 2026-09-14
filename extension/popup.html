@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ink: #161d26;
+    --ink-soft: #1f2833;
+    --paper: #e8ebee;
+    --muted: #8b98a6;
+    --brand-a: #2d64ff;
+    --brand-b: #8c3cf0;
+    --live: #6a5cf5;
+    --dead: #39434f;
+    --alert: #e0a24a;
+    --line: #2b3541;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 272px;
+    margin: 0;
+    padding: 16px 16px 14px;
+    background: var(--ink);
+    color: var(--paper);
+    font: 13px/1.5 system-ui, "Segoe UI", sans-serif;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; display: block; }
+  .brand span {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    background: linear-gradient(90deg, var(--brand-a), var(--brand-b));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  h1 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    color: var(--muted);
+  }
+  .meter { display: grid; gap: 7px; margin-bottom: 13px; }
+  .row { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 9px; }
+  .row span { color: var(--muted); font-size: 12px; }
+  .track { height: 9px; border-radius: 5px; background: var(--dead); overflow: hidden; }
+  .fill {
+    height: 100%;
+    width: 0;
+    background: var(--live);
+    border-radius: 5px;
+    transition: width .12s linear;
+  }
+  .row.silent .fill { background: var(--alert); }
+  #verdict {
+    margin: 0 0 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    min-height: 38px;
+  }
+  #verdict b { color: var(--alert); font-weight: 600; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 7px; }
+  .forced { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+  button {
+    appearance: none;
+    padding: 7px 4px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--ink-soft);
+    color: var(--paper);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: #3d4a59; }
+  button[aria-pressed="true"] {
+    background: linear-gradient(135deg, var(--brand-a), var(--brand-b));
+    border-color: transparent;
+    color: #fff;
+    font-weight: 600;
+  }
+  button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <img src="icons/icon48.png" alt="">
+    <span>Evenwave</span>
+  </div>
+  <h1>Channel levels</h1>
+
+  <div class="meter">
+    <div class="row" id="rowL"><span>Left</span><div class="track"><div class="fill" id="fillL"></div></div></div>
+    <div class="row" id="rowR"><span>Right</span><div class="track"><div class="fill" id="fillR"></div></div></div>
+  </div>
+
+  <p id="verdict">Checking this tab…</p>
+
+  <div class="modes">
+    <button data-mode="auto">Automatic</button>
+    <button data-mode="mono">Mono</button>
+    <button data-mode="off">Off</button>
+  </div>
+  <div class="forced">
+    <button data-mode="left">Use left channel</button>
+    <button data-mode="right">Use right channel</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
