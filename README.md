@@ -84,6 +84,6 @@ Manual modes (Mono / Use left / Use right) stay quiet since you're already steer
 ```
 manifest.json, content.js, popup.html, popup.js, icons/   the shipped extension
 Makefile                    build/zip/clean
-scripts/icon512.png         1024px icon master (store listing art, not shipped)
+brand/icon512.png           1024px icon master (store listing art, not shipped)
 .github/workflows/          release CI, runs on v* tags
 ```
