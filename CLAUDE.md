@@ -15,6 +15,7 @@ holds only the four shipped sizes, and nothing else ships:
 - `manifest.json`, `content.js`, `popup.html`, `popup.js`, `icons/` — the
   extension itself. This is exactly the `SHIP` list in the `Makefile`.
 - `Makefile` — the only build tooling. Plain shell, no Python, no npm.
+- `docs/*.png` — README screenshots only.
 - `brand/icon512.png` — 1024px icon master (store listing art), not
   referenced by the manifest, never shipped.
 - `dist/` — build output only (gitignored). Never edit by hand, regenerate

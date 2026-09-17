@@ -1,89 +1,30 @@
 # Evenwave
 
-Detects YouTube videos whose audio only plays on one side and routes the live channel into both ears — with a quick 5-second on-page heads-up the moment it kicks in.
+**Sound coming out of one ear? Evenwave fixes it while you watch.**
 
-## Install
+Some YouTube videos are recorded with the audio stuck in a single channel. You
+hear half of it, you check your headphones, you blame your headphones. Evenwave
+spots it in a couple of seconds and sends the good channel to both ears.
 
-1. `chrome://extensions` → turn on Developer mode.
-2. Load unpacked → pick this folder (or, if you grabbed a release zip
-   instead of cloning, unzip it first and pick the unzipped folder).
-3. Open a YouTube video and click the extension icon.
+## It tells you when it steps in
 
-## Development
+No settings to dig through, no page to reload — just a quick note that it
+handled it.
 
-No bundler, no dependencies — just plain JS/HTML/CSS and a Makefile.
+![The toast that appears on the page](docs/toast.png)
 
-```bash
-make build   # dist/evenwave/            <- Load unpacked points here
-make zip     # dist/evenwave-<version>.zip  <- store upload, manifest at root
-make clean
-```
+## And you stay in charge
 
-See [CLAUDE.md](CLAUDE.md) for the architecture (message flow, the audio
-graph, the multi-frame detection model) if you're changing `content.js`.
+Click the toolbar icon to see what each channel is actually doing, and take the
+wheel whenever you want.
 
-## Releasing
-
-Pushing a tag matching `v*` (e.g. `v1.0.1`) runs
-[`.github/workflows/release.yml`](.github/workflows/release.yml): it runs
-`make zip` and attaches the zip to a GitHub Release.
-
-```bash
-git tag v1.0.1
-git push origin v1.0.1
-```
-
-That does *not* publish to the Chrome Web Store — CI only produces the zip.
-Download it from the release and upload it to the
-[developer dashboard](https://chrome.google.com/webstore/devconsole)
-by hand.
-
-## How it works
-
-```
-<video> → MediaElementSource → ChannelSplitter ─┬→ AnalyserNode L ┐ measure
-                                                └→ AnalyserNode R ┘
-                                                ↓
-                                 4 GainNodes (2×2 matrix) → ChannelMerger → speakers
-```
-
-Every 200 ms it takes the RMS of each channel. If one side stays below 6% of the
-other for ~3 seconds while there is actual signal, it flags that side as dead and
-sets the gain matrix to copy the live channel into both outputs. Gains ramp with
-`setTargetAtTime`, so switching is silent. When normal stereo returns, it reverts.
-
-The moment it flags a side, a small branded toast slides in from the top-right of
-the page for 5 seconds (click it to dismiss early): "Fixed it" when Automatic just
-applied the fix, or a nudge to turn Automatic on if the extension is currently Off.
-Manual modes (Mono / Use left / Use right) stay quiet since you're already steering it.
+![The extension popup](docs/popup.png)
 
 ## Modes
 
-- **Automatic** – fix only when one-sided audio is detected.
-- **Mono** – always sum both channels (0.7 each) into both ears.
-- **Use left / Use right** – manual override when detection is unsure, e.g. one
-  channel is very quiet rather than truly silent.
-- **Off** – pass through untouched. (The audio still flows through the graph.)
-
-## Known limits
-
-- Only fixes audio that is one-sided *in the file*. A Windows/macOS balance
-  slider, a dead earbud, or a broken jack is upstream of the browser and can't be
-  corrected here.
-- Genuine hard-panned stereo (some live recordings, old rock mixes) can trip
-  detection. Raise `SILENT_RATIO` / `CONFIRM_TICKS` in `content.js` or use Off.
-- `createMediaElementSource` can only be called once per element, so this may
-  conflict with other audio extensions (volume boosters, equalizers) on the same tab.
-- Mono mode adds ~3 dB when content is already centered; drop the 0.7 values to
-  0.5 if you hear clipping.
-- Extend to other sites by adding hosts to `matches` in `manifest.json` — the
-  content script itself is site-agnostic, it just grabs the first `<video>`.
-
-## Project layout
-
-```
-manifest.json, content.js, popup.html, popup.js, icons/   the shipped extension
-Makefile                    build/zip/clean
-brand/icon512.png           1024px icon master (store listing art, not shipped)
-.github/workflows/          release CI, runs on v* tags
-```
+- **Automatic** – step in only when one side is truly dead. *(Default — set it
+  and forget it.)*
+- **Mono** – always mix both channels into both ears.
+- **Use left / Use right** – force a channel when detection is unsure, like a
+  side that's very quiet rather than silent.
+- **Off** – hands off, audio untouched.
