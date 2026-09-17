@@ -12,25 +12,10 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Build extension zip
-        run: python scripts/build.py
-
-      - name: Warn if tag and manifest version disagree
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          TAG_VERSION="${TAG_VERSION%%-*}"
-          MANIFEST_VERSION=$(python -c "import json; print(json.load(open('manifest.json'))['version'])")
-          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "::warning::Tag $GITHUB_REF_NAME implies version $TAG_VERSION but manifest.json has $MANIFEST_VERSION -- releasing anyway, but the zip filename won't match the tag."
-          fi
+      - name: Build zip
+        run: make zip
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

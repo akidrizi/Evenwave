@@ -11,33 +11,33 @@ npm dependencies for the runtime code.
 
 Standard flat MV3 layout — `manifest.json` and the shipped files sit at the
 repo root (what "Load unpacked" and the store zip both expect), `icons/`
-holds only the four shipped sizes, and `scripts/` holds dev-only tooling
-that never ships:
+holds only the four shipped sizes, and nothing else ships:
 - `manifest.json`, `content.js`, `popup.html`, `popup.js`, `icons/` — the
-  extension itself. This is exactly `scripts/build.py`'s `SHIP_PATHS`.
-- `scripts/build.py` — packages the above into a zip.
-- `scripts/make_icons.py` + `scripts/icon512.png` — the icon generator and
-  its 1024px master; not referenced by the manifest, never shipped.
+  extension itself. This is exactly the `SHIP` list in the `Makefile`.
+- `Makefile` — the only build tooling. Plain shell, no Python, no npm.
+- `scripts/icon512.png` — 1024px icon master (store listing art), not
+  referenced by the manifest, never shipped.
 - `dist/` — build output only (gitignored). Never edit by hand, regenerate
-  with `scripts/build.py`.
+  with `make`.
 - `.github/workflows/release.yml` — builds and attaches the zip to a GitHub
   Release whenever a `v*` tag is pushed.
 
 ## Commands
 
-- `python scripts/build.py` — packages the extension into `dist/evenwave/`
-  (unpacked, for `chrome://extensions` → Load unpacked) and
-  `dist/evenwave-<version>.zip` (manifest at the archive root, ready to
-  upload to the Chrome Web Store dashboard). Ships exactly `SHIP_PATHS` in
-  that script — update it if a new top-level file needs to ship.
-- `python scripts/make_icons.py` (run from anywhere) — regenerates
-  `icons/icon16/32/48/128.png` plus `scripts/icon512.png` from the
-  gradient/bar spec in that script. Needs Pillow + numpy. Run this after
-  changing the brand palette or mark, not part of the normal build.
-- No lint/test tooling exists. Verification is manual: run
-  `scripts/build.py`, load `dist/evenwave/` unpacked in Chrome, open a
-  YouTube video, and check the popup + on-page toast.
-- Release: push a tag matching `v*` (e.g. `v1.0.1`) — CI builds the zip and
+- `make build` — copies `SHIP` into `dist/evenwave/` (unpacked, for
+  `chrome://extensions` → Load unpacked).
+- `make zip` — build + `dist/evenwave-<version>.zip`, manifest at the
+  archive root, ready for the Chrome Web Store dashboard. Version is read
+  out of `manifest.json`. Uses `zip`, falling back to PowerShell
+  `Compress-Archive` on Windows where `zip` isn't installed.
+- `make clean` — removes `dist/`.
+- Update the `SHIP` variable if a new top-level file needs to ship.
+- The icons in `icons/` are committed; there is no generator any more.
+  Edit them by hand (or from `scripts/icon512.png`) if the mark changes.
+- No lint/test tooling exists. Verification is manual: run `make build`,
+  load `dist/evenwave/` unpacked in Chrome, open a YouTube video, and check
+  the popup + on-page toast.
+- Release: push a tag matching `v*` (e.g. `v1.0.1`) — CI runs `make zip` and
   attaches it to a GitHub Release. It does not publish to the Chrome Web
   Store itself (that needs the CWS Publish API + stored credentials, not
   set up here); upload the release zip to the dashboard manually.
@@ -101,7 +101,7 @@ the focused one, so `activeTab` wouldn't be sufficient anyway.
 The gradient (`#2d64ff` -> `#8c3cf0`) and the waveform+knob mark are
 duplicated in three independent places with no shared source of truth —
 update all three together if the palette or mark changes:
-- `scripts/make_icons.py` (generates the PNG icon set)
+- `icons/` + `scripts/icon512.png` (the PNG icon set and its master)
 - `popup.html` (inline `<style>`, wordmark + active-button gradient)
 - `content.js` (inline SVG string for the toast icon, `LOGO_SVG`)
 
