@@ -11,20 +11,13 @@ Detects YouTube videos whose audio only plays on one side and routes the live ch
 
 ## Development
 
-No bundler, no npm dependencies for the extension itself — just plain
-JS/HTML/CSS. Only the build/icon tooling under `scripts/` uses Python.
+No bundler, no dependencies — just plain JS/HTML/CSS and a Makefile.
 
 ```bash
-python scripts/build.py
+make build   # dist/evenwave/            <- Load unpacked points here
+make zip     # dist/evenwave-<version>.zip  <- store upload, manifest at root
+make clean
 ```
-
-Packages the extension into `dist/evenwave/` (point Load unpacked here to
-test a real build instead of the raw source) and `dist/evenwave-<version>.zip`
-(store-upload-ready, `manifest.json` at the archive root).
-
-To change the icon or brand mark, edit `scripts/make_icons.py` (needs
-Pillow + numpy) and rerun it — it writes the shipped sizes into `icons/`
-and keeps the 1024px master next to itself.
 
 See [CLAUDE.md](CLAUDE.md) for the architecture (message flow, the audio
 graph, the multi-frame detection model) if you're changing `content.js`.
@@ -32,8 +25,8 @@ graph, the multi-frame detection model) if you're changing `content.js`.
 ## Releasing
 
 Pushing a tag matching `v*` (e.g. `v1.0.1`) runs
-[`.github/workflows/release.yml`](.github/workflows/release.yml): it builds
-the zip via `scripts/build.py` and attaches it to a GitHub Release.
+[`.github/workflows/release.yml`](.github/workflows/release.yml): it runs
+`make zip` and attaches the zip to a GitHub Release.
 
 ```bash
 git tag v1.0.1
@@ -90,8 +83,7 @@ Manual modes (Mono / Use left / Use right) stay quiet since you're already steer
 
 ```
 manifest.json, content.js, popup.html, popup.js, icons/   the shipped extension
-scripts/build.py            packages the above into dist/
-scripts/make_icons.py       regenerates icons/ from the brand spec
+Makefile                    build/zip/clean
 scripts/icon512.png         1024px icon master (store listing art, not shipped)
 .github/workflows/          release CI, runs on v* tags
 ```
