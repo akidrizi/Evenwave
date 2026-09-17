@@ -15,7 +15,7 @@ holds only the four shipped sizes, and nothing else ships:
 - `manifest.json`, `content.js`, `popup.html`, `popup.js`, `icons/` — the
   extension itself. This is exactly the `SHIP` list in the `Makefile`.
 - `Makefile` — the only build tooling. Plain shell, no Python, no npm.
-- `scripts/icon512.png` — 1024px icon master (store listing art), not
+- `brand/icon512.png` — 1024px icon master (store listing art), not
   referenced by the manifest, never shipped.
 - `dist/` — build output only (gitignored). Never edit by hand, regenerate
   with `make`.
@@ -33,7 +33,7 @@ holds only the four shipped sizes, and nothing else ships:
 - `make clean` — removes `dist/`.
 - Update the `SHIP` variable if a new top-level file needs to ship.
 - The icons in `icons/` are committed; there is no generator any more.
-  Edit them by hand (or from `scripts/icon512.png`) if the mark changes.
+  Edit them by hand (or from `brand/icon512.png`) if the mark changes.
 - No lint/test tooling exists. Verification is manual: run `make build`,
   load `dist/evenwave/` unpacked in Chrome, open a YouTube video, and check
   the popup + on-page toast.
@@ -101,7 +101,7 @@ the focused one, so `activeTab` wouldn't be sufficient anyway.
 The gradient (`#2d64ff` -> `#8c3cf0`) and the waveform+knob mark are
 duplicated in three independent places with no shared source of truth —
 update all three together if the palette or mark changes:
-- `icons/` + `scripts/icon512.png` (the PNG icon set and its master)
+- `icons/` + `brand/icon512.png` (the PNG icon set and its master)
 - `popup.html` (inline `<style>`, wordmark + active-button gradient)
 - `content.js` (inline SVG string for the toast icon, `LOGO_SVG`)
 
