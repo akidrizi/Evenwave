@@ -42,6 +42,13 @@ holds only the four shipped sizes, and nothing else ships:
 - No lint/test tooling exists. Verification is manual: run `make build`,
   load `dist/evenwave/` unpacked in Chrome, open a YouTube video, and check
   the popup + on-page toast.
+- `tests/harness.html` exercises the real `content.js` outside the
+  extension: it stubs `chrome.*`, spies on `AudioContext`, and feeds
+  generated left-only / quiet-right / stereo / loud-mono WAVs through real
+  `<audio>` elements. Serve the repo root (`python -m http.server 8765`),
+  open `http://localhost:8765/tests/harness.html`, click the page once
+  (autoplay policy), then run `await runAll()` and `await runIdle()` in
+  DevTools. It is not shipped (not in `SHIP`).
 - Release: push a tag matching `v*` (e.g. `v1.0.1`) — CI runs `make zip` and
   attaches it to a GitHub Release. It does not publish to the Chrome Web
   Store itself (that needs the CWS Publish API + stored credentials, not
@@ -56,7 +63,8 @@ does the actual detection/routing. `popup.html`/`popup.js` is the toolbar
 action — a thin, mostly stateless viewer/remote for whichever tab is
 currently focused. They don't talk directly; state flows through
 `chrome.storage.sync` (`{enabled, mode}`, synced across tabs *and* devices)
-and a one-shot `'ew:status'` message the popup polls every 400ms.
+and an `'ew:status'` port the popup opens to the tab (`chrome.tabs.connect`),
+on which each frame with something to report pushes its status every 400ms.
 
 **Multi-instance, not singleton.** `content_scripts.all_frames` is `true`
 and every built-in site is matched as `https://*.<domain>/*`, subdomains
@@ -65,12 +73,15 @@ embeds, `player.twitch.tv`/`player.vimeo.com` likewise — so don't narrow
 this to top-frame-only). Every matching
 frame in every matching tab runs its own independent copy of the script with
 its own `AudioContext` and gain-node graph — there is no cross-tab or
-cross-frame coordination. Because of this, the `'ew:status'` message
-listener only calls `send()` if this frame actually has a video attached
-(`chain` is truthy); other frames (ads, embeds) return `false` instead of
-responding. This is load-bearing: `chrome.tabs.sendMessage` from the popup
-has no `frameId`, so if more than one frame answered it'd be a race and an
-irrelevant frame could stomp the real player's status.
+cross-frame coordination. Because of this, status goes over a port rather
+than a request/response message: `chrome.tabs.connect` from the popup
+reaches every frame, and each frame that has a chain, a blocked reason or
+an error pushes its status tagged with a per-frame random `FRAME_ID`; idle
+frames (ads, empty embeds) push nothing. The popup keeps the latest status
+per frame, drops any that stops pushing for 1.5s, and shows the highest
+ranked one (attached > blocked > error). Don't go back to a one-shot
+`sendMessage`: it delivers exactly one answer with no `frameId`, so with
+more than one candidate frame it's a race.
 
 **Audio graph** (built in `attach()`):
 ```
@@ -88,22 +99,59 @@ on a single quiet moment. The exception is a digitally dead side (raw RMS under
 stereo mixes, even hard-panned ones, leak reverb/noise into the other channel
 and never read that low. Clearing back to stereo always takes the full ~3s.
 
+Detection is time-based (`CONFIRM_MS`/`FAST_MS` against `performance.now()`),
+not tick-counted, so background-tab timer throttling can't stretch the
+windows.
+
 `pickMedia()` prefers whatever is actually playing over the first element in
 the DOM — off YouTube a page often holds several idle `<video>`/`<audio>`
-nodes (previews, hidden players, ad slots). `attach()` re-runs on every SPA navigation (YouTube swaps `<video>` elements
-without a full page load; polled every 1s). It must call `teardownChain()`
-on the old chain before building the new one — the old chain's nodes stay
-wired to `ctx.destination` otherwise and never get freed, since
-disconnecting the media source alone doesn't touch the rest of the graph.
+nodes (previews, hidden players, ad slots). Attachment is event-driven:
+capturing `play`/`playing`/`volumechange` listeners on the document call
+`scan()` (media events don't bubble but capture still sees them), with a
+slow 5s `scan()` fallback for anything missed. That is what survives SPA
+navigation (YouTube swaps `<video>` elements without a full page load).
+`attach()` creates the new `MediaElementSource` *first*, since that is the
+one call that can throw (a page that already wired the element to its own
+AudioContext), and only then tears down the old chain — the other order
+leaves the old player permanently muted on failure. It must call
+`teardownChain()` on the old chain before building the new one — the old
+chain's nodes stay wired to `ctx.destination` otherwise and never get freed,
+since disconnecting the media source alone doesn't touch the rest of the
+graph. The four gain nodes get their initial matrix via `gain.value` before
+anything is connected; ramping from the default of 1 would sum L+R into both
+ears for the first few hundred ms.
+
+Lifecycle costs are kept off idle frames: the 200ms `tick` interval only
+runs while the attached element is playing (`syncTick()`), the AudioContext
+is created with `latencyHint: 'playback'`, and after `IDLE_SUSPEND_MS` of
+being paused it is suspended (`idleSuspended`) and resumed on the next
+`play`. A context that starts `suspended` *without* `idleSuspended` is the
+autoplay policy (no user gesture yet); `attach()` refuses to tap in that
+state, reports `blocked: 'gesture'`, and the capturing `pointerdown`/
+`keydown` handlers resume and re-scan.
 
 **Toast notifications** are a closed shadow DOM host appended to
 `document.documentElement`, built entirely inline in `content.js` (no
 `web_accessible_resources` entry) so nothing is exposed for the host page to
-fingerprint. Clicking one sends `'ew:openPopup'` to `background.js`, which calls
+fingerprint. Clicking one normally sends `'ew:openPopup'` to `background.js`, which calls
 `chrome.action.openPopup()` (Chrome 127+; content scripts can't reach
 `chrome.action` themselves). They fire only on `auto` mode when a new side is detected, or
 as a nudge when detection fires while the extension is `off`; manual modes
 (`mono`/`left`/`right`) stay quiet since the user is already steering it.
+The nudge toast says "click here to fix it" and does exactly that on click
+(`fixNow()`: switches to `auto` locally and writes it to `chrome.storage.sync`)
+rather than opening the popup. The `gesture` toast does nothing on click; the
+click itself is the user activation that unblocks the AudioContext.
+
+A tab that was open before the extension was installed or reloaded runs no
+(or an orphaned) content script: the popup's port fails, and on a covered
+host it says to reload the tab rather than "no audio found". The orphaned
+script notices on its next scan (`chrome.runtime.id` goes undefined), shows
+one "Evenwave was updated" toast and stops its timers. It cannot hand the
+tapped element back: `createMediaElementSource` is one-way, and a fresh
+injection into that tab would throw "already connected", so a page reload
+is the only recovery. Expect this after every `chrome://extensions` reload
+during development.
 
 **Permissions**: `storage`, `scripting`, `activeTab`, plus
 `host_permissions` for the built-in sites and `optional_host_permissions`
@@ -121,7 +169,13 @@ the click handler (the prompt only appears on a user gesture), and
 `background.js` does the actual `registerContentScripts` + one-off
 `executeScript` from `permissions.onAdded`. That split is load-bearing —
 Chrome can tear the popup down the instant the prompt opens, so anything in
-the `request()` callback may never run. `activeTab` is what lets the popup
+the `request()` callback may never run. Chrome clears every dynamic
+registration on an extension update, and reloading an unpacked extension
+counts as an update, while the granted permissions survive — so
+`runtime.onInstalled` rebuilds the registrations from
+`chrome.permissions.getAll()`. Without that, every opted-in site silently
+stops working after each reload and the popup says "reload this tab"
+forever. `activeTab` is what lets the popup
 read `tab.url` to work out which host to offer.
 
 **The CORS trap**: `createMediaElementSource()` on cross-origin media that

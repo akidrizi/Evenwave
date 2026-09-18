@@ -9,17 +9,33 @@ function hostsOf(perms) {
   return (perms.origins || []).filter((o) => /^https?:/.test(o));
 }
 
+async function register(pattern) {
+  try {
+    await chrome.scripting.registerContentScripts([{
+      id: scriptId(pattern),
+      matches: [pattern],
+      js: ['content.js'],
+      allFrames: true,
+      runAt: 'document_idle'
+    }]);
+  } catch (e) { /* already registered */ }
+}
+
+// Granted hosts outlive the dynamic registrations: an update or a reload of
+// the extension keeps the permission but can drop the script, leaving a
+// "watched" site with nothing injected. Rebuild the list from what is
+// actually granted, skipping the hosts the manifest already covers.
+chrome.runtime.onInstalled.addListener(async () => {
+  const builtIn = new Set(chrome.runtime.getManifest().host_permissions);
+  const perms = await chrome.permissions.getAll();
+  for (const pattern of hostsOf(perms)) {
+    if (!builtIn.has(pattern)) await register(pattern);
+  }
+});
+
 chrome.permissions.onAdded.addListener(async (perms) => {
   for (const pattern of hostsOf(perms)) {
-    try {
-      await chrome.scripting.registerContentScripts([{
-        id: scriptId(pattern),
-        matches: [pattern],
-        js: ['content.js'],
-        allFrames: true,
-        runAt: 'document_idle'
-      }]);
-    } catch (e) { /* already registered */ }
+    await register(pattern);
 
     // Pages open right now predate the registration, so inject them once.
     const tabs = await chrome.tabs.query({ url: pattern });

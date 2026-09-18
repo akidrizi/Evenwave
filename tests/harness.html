@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Evenwave harness</title>
+<style>
+  body { font: 13px/1.5 system-ui, sans-serif; margin: 20px; max-width: 900px; color: #222; }
+  audio { display: block; margin: 6px 0; width: 400px; }
+  pre { background: #f4f4f4; padding: 10px; max-height: 320px; overflow: auto; font-size: 12px; }
+  button { margin: 2px; }
+  .ok { color: #1a7f37; } .bad { color: #c0392b; }
+</style>
+</head>
+<body>
+<h1>Evenwave harness</h1>
+<p>Loads the real <code>content.js</code> against a stubbed <code>chrome.*</code> and generated WAVs.
+Serve the repo root (e.g. <code>python -m http.server 8765</code>) and open
+<code>http://localhost:8765/tests/harness.html</code>. Click the page once first (autoplay policy), then use the buttons or
+<code>await runAll()</code> in DevTools.</p>
+
+<div>
+  <b>Source:</b>
+  <button onclick="load('a', 'leftDead')">left only (R dead)</button>
+  <button onclick="load('a', 'leftQuiet')">left loud / R quiet</button>
+  <button onclick="load('a', 'stereo')">stereo</button>
+  <button onclick="load('a', 'monoLoud')">mono, loud</button>
+  &nbsp; <b>Mode:</b>
+  <button onclick="setMode('auto')">auto</button>
+  <button onclick="setMode('mono')">mono</button>
+  <button onclick="setMode('left')">left</button>
+  <button onclick="setMode('right')">right</button>
+  <button onclick="setMode('off')">off</button>
+  &nbsp; <button onclick="runAll()">run all checks</button>
+</div>
+
+<audio id="a" controls loop></audio>
+<audio id="b" controls loop></audio>
+
+<pre id="log"></pre>
+
+<script>
+// ---------------------------------------------------------------- chrome stub
+(() => {
+  const store = { enabled: true, mode: 'auto' };
+  const changed = [];
+  const connects = [];
+  window.__stub = { store, connects };
+  window.chrome = {
+    storage: {
+      sync: {
+        get(defaults, cb) { cb({ ...defaults, ...store }); },
+        set(obj, cb) {
+          const changes = {};
+          for (const k of Object.keys(obj)) { changes[k] = { oldValue: store[k], newValue: obj[k] }; store[k] = obj[k]; }
+          changed.forEach((fn) => fn(changes, 'sync'));
+          cb && cb();
+        }
+      },
+      onChanged: { addListener(fn) { changed.push(fn); } }
+    },
+    runtime: {
+      id: 'harness', // content.js treats a missing id as "extension reloaded under us"
+      onConnect: { addListener(fn) { connects.push(fn); } },
+      onMessage: { addListener() {} },
+      sendMessage(m) { log('runtime.sendMessage ' + JSON.stringify(m)); return Promise.resolve(); }
+    }
+  };
+})();
+
+// ------------------------------------------------------ Web Audio spy hooks
+// Record every AudioContext and GainNode content.js creates so the tests can
+// read the routing matrix without content.js exposing anything.
+window.__ctxs = [];
+window.__gains = [];
+window.__srcs = [];
+(() => {
+  const Orig = window.AudioContext;
+  window.AudioContext = class extends Orig {
+    constructor(opts) { super(opts); window.__ctxs.push({ ctx: this, opts }); }
+  };
+  const cg = Orig.prototype.createGain;
+  Orig.prototype.createGain = function () { const g = cg.call(this); window.__gains.push(g); return g; };
+  const cs = Orig.prototype.createMediaElementSource;
+  Orig.prototype.createMediaElementSource = function (el) { const s = cs.call(this, el); window.__srcs.push({ el, s }); return s; };
+})();
+
+// ------------------------------------------------------------------ helpers
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = (performance.now() / 1000).toFixed(2) + 's  ' + msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log('[harness] ' + msg);
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 16-bit stereo WAV, 44.1kHz, `seconds` long. fnL/fnR return [-1, 1] per sample.
+function makeWav(seconds, fnL, fnR) {
+  const sr = 44100, n = Math.floor(sr * seconds);
+  const buf = new ArrayBuffer(44 + n * 4);
+  const v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 4, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, n * 4, true);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    v.setInt16(44 + i * 4, Math.max(-1, Math.min(1, fnL(t))) * 32767, true);
+    v.setInt16(46 + i * 4, Math.max(-1, Math.min(1, fnR(t))) * 32767, true);
+  }
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+const sine = (f, a) => (t) => a * Math.sin(2 * Math.PI * f * t);
+const SRC = {
+  leftDead:  () => makeWav(4, sine(440, 0.5), () => 0),               // R exactly zero: fast path
+  leftQuiet: () => makeWav(4, sine(440, 0.5), sine(440, 0.01)),       // ratio 0.02: slow path
+  stereo:    () => makeWav(4, sine(440, 0.4), sine(660, 0.4)),
+  monoLoud:  () => makeWav(4, sine(220, 0.99), sine(220, 0.99))       // fully correlated: mono must not clip
+};
+
+// Pause, swap the source, and leave a realistic load gap (a real video takes
+// well over 300ms to start) so the analyser's 341ms window has flushed the
+// previous source before the timing checks begin.
+async function load(id, kind) {
+  const el = document.getElementById(id);
+  el.pause();
+  el.src = SRC[kind]();
+  el.volume = 1; el.muted = false;
+  log(id + ' <- ' + kind);
+  await sleep(500);
+  return el;
+}
+async function play(id) {
+  const el = document.getElementById(id);
+  try { await el.play(); } catch (e) { log('play() rejected: ' + e.name, 'bad'); }
+  return el;
+}
+function setMode(mode) {
+  chrome.storage.sync.set({ mode, enabled: mode !== 'off' });
+  log('mode -> ' + mode);
+}
+
+// Simulated popup port: collect what content.js pushes.
+let port = null, statuses = [];
+function openPort() {
+  statuses = [];
+  const disconnects = [];
+  port = {
+    name: 'ew:status',
+    postMessage(m) { statuses.push({ at: performance.now(), s: m }); },
+    onDisconnect: { addListener(fn) { disconnects.push(fn); } },
+    close() { disconnects.forEach((fn) => fn()); }
+  };
+  __stub.connects.forEach((fn) => fn(port));
+  return port;
+}
+const last = () => statuses.length ? statuses[statuses.length - 1].s : null;
+async function waitFor(pred, timeoutMs, label) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < timeoutMs) {
+    const s = last();
+    if (s && pred(s)) return performance.now() - t0;
+    await sleep(50);
+  }
+  throw new Error('timeout waiting for ' + label);
+}
+const matrix = () => window.__gains.slice(-4).map((g) => +g.gain.value.toFixed(3));
+const ctx = () => window.__ctxs[0] && window.__ctxs[0].ctx;
+
+// ---------------------------------------------------------------- the checks
+const results = [];
+function check(name, ok, detail) {
+  results.push({ name, ok, detail });
+  log((ok ? 'PASS ' : 'FAIL ') + name + (detail ? ' -- ' + detail : ''), ok ? 'ok' : 'bad');
+}
+
+async function runAll() {
+  results.length = 0;
+  logEl.textContent = '';
+  openPort();
+
+  // 1. attach on play, matrix starts at stereo immediately (no 1,1,1,1 burst)
+  setMode('auto');
+  await load('a', 'stereo');
+  await play('a');
+  const t = await waitFor((s) => s.attached, 3000, 'attach');
+  check('attach on play event', true, Math.round(t) + 'ms');
+  check('AudioContext latencyHint playback', __ctxs[0].opts && __ctxs[0].opts.latencyHint === 'playback', JSON.stringify(__ctxs[0].opts));
+  check('initial matrix is stereo (no L+R burst)', JSON.stringify(matrix()) === '[1,0,0,1]', JSON.stringify(matrix()));
+  check('status carries frame id', typeof last().frame === 'string' && last().frame.length > 0);
+  await sleep(1200);
+  check('stereo not flagged', last().detected === null, 'detected=' + last().detected);
+
+  // 2. dead right channel: fast path, expect ~1s (< 2s)
+  await load('a', 'leftDead'); await play('a');
+  const tDead = await waitFor((s) => s.detected === 'left', 4000, 'dead-side detection');
+  check('R dead -> detected left via fast path', tDead < 2000, Math.round(tDead) + 'ms');
+  await sleep(400);
+  check('matrix duplicates left', JSON.stringify(matrix()) === '[1,1,0,0]', JSON.stringify(matrix()));
+  check('toast shown', !!document.getElementById('evenwave-toast-host'));
+
+  // 3. back to stereo: clears after ~3s (not before 2.5s)
+  await load('a', 'stereo'); await play('a');
+  const tClear = await waitFor((s) => s.detected === null, 6000, 'clear');
+  check('stereo clears detection after ~3s', tClear >= 2500 && tClear < 4500, Math.round(tClear) + 'ms');
+
+  // 4. quiet (not dead) right: slow path ~3s
+  await load('a', 'leftQuiet'); await play('a');
+  const tQuiet = await waitFor((s) => s.detected === 'left', 6000, 'quiet-side detection');
+  check('R quiet -> detected left via slow path', tQuiet >= 2500 && tQuiet < 4500, Math.round(tQuiet) + 'ms');
+
+  // 5. mono mode sums at 0.5
+  setMode('mono'); await sleep(500);
+  check('mono matrix is 0.5 each', JSON.stringify(matrix()) === '[0.5,0.5,0.5,0.5]', JSON.stringify(matrix()));
+  setMode('auto'); await sleep(500);
+
+  // 6. pause stops the tick, play restarts it
+  const a = document.getElementById('a');
+  a.pause(); await sleep(600);
+  check('paused -> status.playing false', last().playing === false);
+  const nBefore = statuses.length;
+  await play('a'); await sleep(600);
+  check('play -> status.playing true', last().playing === true);
+  check('status still pushing while port open', statuses.length > nBefore);
+
+  // 7. element swap: a second audible element takes over, the old source is disconnected
+  await load('b', 'stereo');
+  a.pause();
+  await play('b');
+  await waitFor((s) => s.attached && s.playing, 3000, 'attach to b');
+  check('second element attached on play', __srcs.length === 2 && __srcs[1].el.id === 'b', 'sources=' + __srcs.length);
+  check('old source disconnected from the graph', __srcs[0].s.numberOfOutputs === 1 && last().attached, 'a paused, b live');
+  check('gain nodes recreated for new chain', __gains.length === 8, 'gains=' + __gains.length);
+
+  // 8. failed attach leaves the current player untouched:
+  //    pre-wire a third element to a foreign AudioContext so createMediaElementSource throws.
+  const c = document.createElement('audio'); c.id = 'c'; c.loop = true; document.body.appendChild(c);
+  c.src = SRC.stereo();
+  const foreign = new (Object.getPrototypeOf(AudioContext))(); // the un-spied original
+  await new Promise((r) => c.addEventListener('loadeddata', r, { once: true }));
+  foreign.createMediaElementSource(c).connect(foreign.destination);
+  document.getElementById('b').pause();
+  await play('c');
+  await sleep(1500);
+  const sErr = last();
+  const ours = __srcs.filter((x) => x.s.context === ctx()).length; // the spy also sees the foreign context's call
+  check('foreign-wired element reports an error', !!sErr.error, String(sErr.error));
+  check('error does not hide the live chain', sErr.attached === true, 'attached=' + sErr.attached);
+  check('previous chain survives the failure', __gains.length === 8 && ours === 2, 'gains=' + __gains.length + ' ourSrcs=' + ours);
+  c.pause(); c.remove(); foreign.close();
+  await play('b'); await sleep(800);
+  check('b still attached and playing after failure', last().attached && last().playing && !last().error);
+
+  // 9. port disconnect stops pushes
+  port.close(); const n = statuses.length; await sleep(1000);
+  check('no pushes after port disconnect', statuses.length === n);
+
+  const fails = results.filter((r) => !r.ok).length;
+  log(fails ? fails + ' FAILED' : 'ALL ' + results.length + ' PASSED', fails ? 'bad' : 'ok');
+  return results;
+}
+
+// Long one, run separately: idle suspend after 15s paused, resume on play.
+async function runIdle() {
+  openPort();
+  // content.js sticks with whichever element is audible, so silence the rest first.
+  document.querySelectorAll('audio, video').forEach((el) => el.pause());
+  await load('a', 'stereo'); await play('a');
+  await waitFor((s) => s.attached && s.playing, 3000, 'attach');
+  document.getElementById('a').pause();
+  log('paused; waiting 17s for idle suspend...');
+  await sleep(17000);
+  check('ctx suspended after idle', ctx().state === 'suspended', ctx().state);
+  await play('a'); await sleep(800);
+  check('ctx running again after play', ctx().state === 'running', ctx().state);
+  check('levels flowing after resume', last().playing && (last().level.l > 0 || last().level.r > 0));
+  return results;
+}
+</script>
+<script src="../content.js"></script>
+</body>
+</html>
