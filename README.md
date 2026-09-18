@@ -2,9 +2,14 @@
 
 **Sound coming out of one ear? Evenwave fixes it while you watch.**
 
-Some YouTube videos are recorded with the audio stuck in a single channel. You
-hear half of it, you check your headphones, you blame your headphones. Evenwave
+Some videos are recorded with the audio stuck in a single channel. You hear
+half of it, you check your headphones, you blame your headphones. Evenwave
 spots it in a couple of seconds and sends the good channel to both ears.
+
+## Works where you watch
+
+YouTube, Twitch, Kick, Vimeo, Dailymotion and SoundCloud, out of the box.
+Anywhere else, one click turns it on for that site.
 
 ## It tells you when it steps in
 

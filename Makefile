@@ -1,6 +1,6 @@
 NAME    := evenwave
 VERSION := $(shell sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' manifest.json | head -1)
-SHIP    := manifest.json content.js popup.html popup.js icons
+SHIP    := manifest.json content.js background.js popup.html popup.js icons
 OUT     := dist/$(NAME)
 ZIP     := dist/$(NAME)-$(VERSION).zip
 

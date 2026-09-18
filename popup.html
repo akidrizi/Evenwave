@@ -32,7 +32,6 @@
   }
   .brand img { width: 26px; height: 26px; border-radius: 7px; display: block; }
   .sponsor {
-    margin-left: auto;
     display: flex;
     align-items: center;
     padding: 4px;
@@ -42,7 +41,55 @@
   .sponsor:hover { color: #ff6b8b; background: var(--ink-soft); }
   .sponsor:focus-visible { outline: 2px solid var(--live); outline-offset: 1px; }
   .sponsor svg { display: block; }
-  .brand span {
+
+  /* "SUPPORT" pulls out from behind the heart like a train leaving a tunnel:
+     the box clips at the heart's edge, each letter is a car, and the small
+     per-letter delay is the slack in the couplings. */
+  .sup {
+    margin-left: auto;
+    margin-right: -4px; /* tuck the tunnel mouth up against the heart */
+    display: flex;
+    overflow: hidden;
+    pointer-events: none;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    color: #ff6b8b;
+  }
+  .sup span {
+    display: inline-block;
+    opacity: 0;
+    transform: translateX(64px);
+    transition: transform .45s cubic-bezier(.25, 1.35, .5, 1), opacity .15s linear;
+  }
+  .brand:has(.sponsor:hover, .sponsor:focus-visible) .sup span { opacity: 1; transform: none; }
+  .sup span:nth-child(2) { transition-delay: 25ms; }
+  .sup span:nth-child(3) { transition-delay: 50ms; }
+  .sup span:nth-child(4) { transition-delay: 75ms; }
+  .sup span:nth-child(5) { transition-delay: 100ms; }
+  .sup span:nth-child(6) { transition-delay: 125ms; }
+  .sup span:nth-child(7) { transition-delay: 150ms; }
+
+  /* Heartbeat: two quick beats, one slow, repeat. */
+  @keyframes beat {
+    0%   { transform: scale(1); }
+    9%   { transform: scale(1.28); }
+    18%  { transform: scale(1); }
+    27%  { transform: scale(1.28); }
+    36%  { transform: scale(1); }
+    60%  { transform: scale(1.2); }
+    84%  { transform: scale(1); }
+    100% { transform: scale(1); }
+  }
+  .sponsor:hover svg,
+  .sponsor:focus-visible svg { animation: beat 1.5s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sup span { transition: none; }
+    .sponsor:hover svg,
+    .sponsor:focus-visible svg { animation: none; }
+  }
+  .brand .word {
     font-size: 15px;
     font-weight: 700;
     letter-spacing: -.01em;
@@ -98,12 +145,51 @@
     font-weight: 600;
   }
   button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+  button.suggest {
+    border-color: var(--live);
+    box-shadow: 0 0 0 1px var(--live), 0 0 12px rgba(106, 92, 245, .35);
+  }
+  button:disabled,
+  button:disabled:hover {
+    opacity: .35;
+    border-color: var(--line);
+    cursor: not-allowed;
+  }
+  #warn {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    margin: 12px 0 0;
+    padding-top: 11px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--alert);
+  }
+  #warn.show { display: flex; }
+  #warn svg { flex: none; display: block; }
+  #warn.show + #site { margin-top: 8px; padding-top: 0; border-top: 0; }
+  #site {
+    display: none;
+    margin-top: 12px;
+    padding-top: 11px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  #site.show { display: block; }
+  #site button {
+    width: 100%;
+    margin-top: 7px;
+    padding: 6px 4px;
+  }
+  #siteHost { color: var(--paper); }
 </style>
 </head>
 <body>
   <div class="brand">
     <img src="icons/icon48.png" alt="">
-    <span>Evenwave</span>
+    <span class="word">Evenwave</span>
+    <span class="sup" aria-hidden="true"><span>S</span><span>U</span><span>P</span><span>P</span><span>O</span><span>R</span><span>T</span></span>
     <a class="sponsor" href="https://ko-fi.com/akidrizi" target="_blank" rel="noreferrer"
        title="Support Evenwave" aria-label="Support Evenwave">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -128,6 +214,17 @@
   <div class="forced">
     <button data-mode="left">Use left channel</button>
     <button data-mode="right">Use right channel</button>
+  </div>
+
+  <p id="warn" role="status">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/>
+    </svg>
+    <span id="warnText"></span>
+  </p>
+  <div id="site">
+    <span id="siteText"></span>
+    <button id="siteBtn"></button>
   </div>
 
   <script src="popup.js"></script>
