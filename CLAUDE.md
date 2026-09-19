@@ -49,10 +49,14 @@ holds only the four shipped sizes, and nothing else ships:
   open `http://localhost:8765/tests/harness.html`, click the page once
   (autoplay policy), then run `await runAll()` and `await runIdle()` in
   DevTools. It is not shipped (not in `SHIP`).
-- Release: push a tag matching `v*` (e.g. `v1.0.1`) — CI runs `make zip` and
-  attaches it to a GitHub Release. It does not publish to the Chrome Web
-  Store itself (that needs the CWS Publish API + stored credentials, not
-  set up here); upload the release zip to the dashboard manually.
+- Release: push a tag matching `v*` (e.g. `v1.0.1`) — CI checks the tag
+  matches `manifest.json`, runs `make zip`, attaches it to a GitHub Release,
+  and, if the four `CWS_*` repo secrets (`CWS_EXTENSION_ID`, `CWS_CLIENT_ID`,
+  `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`) are set, uploads the zip to the
+  Chrome Web Store item as a new draft via `chrome-webstore-upload-cli`. It
+  deliberately does not press Publish: review submission stays a manual
+  click in the dashboard. Without the secrets the store step is skipped and
+  the zip is only attached to the GitHub Release.
 
 ## Architecture
 

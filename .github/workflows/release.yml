@@ -11,8 +11,23 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    env:
+      # Secrets can't be read inside `if:` directly; surface their presence
+      # here so the store upload is skipped cleanly until they are set.
+      HAS_CWS_SECRETS: ${{ secrets.CWS_REFRESH_TOKEN != '' && secrets.CWS_CLIENT_ID != '' && secrets.CWS_CLIENT_SECRET != '' && secrets.CWS_EXTENSION_ID != '' }}
     steps:
       - uses: actions/checkout@v4
+
+      # A tag that doesn't match manifest.json would publish the wrong
+      # version string to the store. Fail early instead.
+      - name: Check tag matches manifest version
+        run: |
+          manifest=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' manifest.json | head -1)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$manifest" != "$tag" ]; then
+            echo "manifest.json is $manifest but the tag is v$tag" >&2
+            exit 1
+          fi
 
       - name: Build zip
         run: make zip
@@ -23,3 +38,22 @@ jobs:
           name: "Evenwave ${{ github.ref_name }}"
           files: dist/*.zip
           generate_release_notes: true
+
+      # Uploads the zip as a new draft version of the store item. It does not
+      # press Publish: review and rollout stay a manual click in the dashboard
+      # until the pipeline has earned that trust. Add `--auto-publish` to the
+      # command below to change that.
+      - name: Upload to Chrome Web Store
+        if: env.HAS_CWS_SECRETS == 'true'
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          zip=$(ls dist/*.zip | head -1)
+          npx --yes chrome-webstore-upload-cli@3 upload --source "$zip"
+
+      - name: Store upload skipped
+        if: env.HAS_CWS_SECRETS != 'true'
+        run: echo "CWS_* secrets not set; zip attached to the GitHub release only."
