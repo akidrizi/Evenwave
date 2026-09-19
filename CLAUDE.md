@@ -19,7 +19,9 @@ holds only the four shipped sizes, and nothing else ships:
 - `background.js` — service worker; registers/unregisters the content script
   when a site permission is granted or revoked.
 - `Makefile` — the only build tooling. Plain shell, no Python, no npm.
-- `docs/*.png` — README screenshots only.
+- `docs/*.png` — README screenshots only. `docs/store/*.png` — Chrome Web
+  Store listing screenshots (1280x800, 24-bit PNG, no alpha; the store
+  rejects anything else), composed from the README crops. Never shipped.
 - `brand/icon512.png` — 1024px icon master (store listing art), not
   referenced by the manifest, never shipped.
 - `dist/` — build output only (gitignored). Never edit by hand, regenerate
