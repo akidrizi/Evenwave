@@ -41,9 +41,10 @@ holds only the four shipped sizes, and nothing else ships:
 - Update the `SHIP` variable if a new top-level file needs to ship.
 - The icons in `icons/` are committed; there is no generator any more.
   Edit them by hand (or from `brand/icon512.png`) if the mark changes.
-- No lint/test tooling exists. Verification is manual: run `make build`,
-  load `dist/evenwave/` unpacked in Chrome, open a YouTube video, and check
-  the popup + on-page toast.
+- No lint tooling or CI test step exists, and nothing automated loads the
+  real extension. Final verification is manual: run `make build`, load
+  `dist/evenwave/` unpacked in Chrome, open a YouTube video, and check the
+  popup + on-page toast.
 - `tests/harness.html` exercises the real `content.js` outside the
   extension: it stubs `chrome.*`, spies on `AudioContext`, and feeds
   generated left-only / quiet-right / stereo / loud-mono WAVs through real
@@ -51,6 +52,35 @@ holds only the four shipped sizes, and nothing else ships:
   open `http://localhost:8765/tests/harness.html`, click the page once
   (autoplay policy), then run `await runAll()` and `await runIdle()` in
   DevTools. It is not shipped (not in `SHIP`).
+- Running the harness from Claude in Chrome (no repo tooling involved):
+  serve the repo on `127.0.0.1:8765` and open the harness in a tab from
+  `tabs_create_mcp`, since the tools only reach Claude's own tab group. Script
+  can't grant autoplay activation, so make a real `computer` `left_click` on
+  the "run all checks" button and confirm
+  `navigator.userActivation.hasBeenActive`. That click starts a run; only
+  call `window.__run = runAll().catch(e => log('RUN ERROR ' + e.message,
+  'bad'))` from `javascript_tool` if `logEl.children` is still empty. Poll
+  `logEl.children` until it shows `ALL n PASSED` or `n FAILED`, then start
+  `runIdle()` the same way. If an element stays at `readyState` 0 with
+  `networkState` 2, the tab's media pipeline is stuck: use a fresh tab. The
+  test tones are audible on the user's speakers.
+- Headless Chrome has run a throwaway copy of this idea (not kept in the
+  repo; `harness.html` itself has never run this way, and `runAll()` doesn't
+  start on its own):
+  `chrome --headless=new --disable-gpu --autoplay-policy=no-user-gesture-required --dump-dom http://localhost:8765/test.html`.
+  The page has to start itself and write results to the DOM. `--dump-dom`
+  fires at `load`, so hold that open with an `<img src="/slow">` that a small
+  local server answers after ~14s (the server also needs `Range` support for
+  the media file). Headless still plays through the speakers; add
+  `--mute-audio`, which should leave the analyser readings intact but hasn't
+  been tried.
+- Popup layout can be rendered headlessly: copy `popup.html` with a stubbed
+  `chrome.*` script ahead of `popup.js`, then run `--headless=new
+  --disable-gpu --virtual-time-budget=2000 --window-size=272,420
+  --screenshot=out.png`.
+- None of the above loads the real extension, so these still need a manual
+  check in Chrome: the real `chrome.tabs.connect` status port, multi-frame
+  delivery, toast clicks (closed shadow root), and opted-in site registration.
 - Release: push a tag matching `v*` (e.g. `v1.0.1`) — CI checks the tag
   matches `manifest.json`, runs `make zip`, attaches it to a GitHub Release,
   and, if the four `CWS_*` repo secrets (`CWS_EXTENSION_ID`, `CWS_CLIENT_ID`,
